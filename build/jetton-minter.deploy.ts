@@ -1,12 +1,15 @@
-import { Cell, beginCell, Address, WalletContract, beginDict, Slice } from "ton";
+import {Cell, beginCell, Address, WalletContract, beginDict, Slice, toNano} from "ton";
 
 import walletHex from "./jetton-wallet.compiled.json";
 import minterHex from "./jetton-minter.compiled.json";
 import { Sha256 } from "@aws-crypto/sha256-js";
 import BN from "bn.js";
+import {OPS} from "../test/lib/ops";
 
 export const JETTON_WALLET_CODE = Cell.fromBoc(walletHex.hex)[0];
 export const JETTON_MINTER_CODE = Cell.fromBoc(minterHex.hex)[0]; // code cell from build output
+
+export const JETTON_DEPLOY_GAS = toNano(0.25);
 
 const ONCHAIN_CONTENT_PREFIX = 0x00;
 const SNAKE_PREFIX = 0x00;
@@ -15,11 +18,12 @@ const SNAKE_PREFIX = 0x00;
 // - Data is stored on-chain (except for the image data itself)
 // - Owner should usually be the deploying wallet's address.
 const jettonParams = {
-  owner: Address.parse("EQD4gS-Nj2Gjr2FYtg-s3fXUvjzKbzHGZ5_1Xe_V0-GCp0p2"),
-  name: "MyJetton",
-  symbol: "JET1",
-  image: "https://www.linkpicture.com/q/download_183.png", // Image url
-  description: "My jetton",
+  owner: Address.parse("EQDUQZsozi15Uf5i58vmvEsFet4ninKK7nSTdbsEdy4cNufm"),
+  name: "Sharinegan",
+  symbol: "SNV",
+  image: "https://i.pinimg.com/564x/54/2a/10/542a104f153f15e4b55011556dedd8bd.jpg", // Image url
+  description: "Sharinegan Token VIP",
+  amountToMint: new BN(1000000 * 10 ** 9)
 };
 
 export type JettonMetaDataKeys = "name" | "description" | "image" | "symbol";
@@ -129,19 +133,46 @@ export function jettonMinterInitData(
     .endCell();
 }
 
+export function mintBody(
+    ownerAddress: Address,
+    jettonValue: BN,
+    ): Cell {
+  return beginCell()
+      .storeUint(OPS.Mint, 32) // opcode (reference TODO)
+      .storeUint(0, 64) // queryid
+      .storeAddress(ownerAddress)
+      .storeCoins(toNano(0.2)) // gas fee
+      .storeRef(
+          // internal transfer message
+          beginCell()
+              .storeUint(OPS.InternalTransfer, 32)
+              .storeUint(0, 64)
+              .storeCoins(jettonValue)
+              .storeAddress(null) // TODO FROM?
+              .storeAddress(ownerAddress)
+              .storeCoins(toNano(0.001))
+              .storeBit(false) // forward_payload in this slice, not separate cell
+              .endCell()
+      )
+      .endCell();
+}
+
 // return the init Cell of the contract storage (according to load_data() contract method)
 export function initData() {
-  return jettonMinterInitData(jettonParams.owner, {
-    name: jettonParams.name,
-    symbol: jettonParams.symbol,
-    image: jettonParams.image,
-    description: jettonParams.description,
-  });
+  return jettonMinterInitData(
+      jettonParams.owner,
+      {
+        name: jettonParams.name,
+        symbol: jettonParams.symbol,
+        image: jettonParams.image,
+        description: jettonParams.description,
+      }
+  );
 }
 
 // return the op that should be sent to the contract on deployment, can be "null" to send an empty message
 export function initMessage() {
-  return null; // TODO?
+  return mintBody(jettonParams.owner, jettonParams.amountToMint);
 }
 
 // optional end-to-end sanity test for the actual on-chain contract to see it is actually working on-chain

@@ -17,6 +17,8 @@ import glob from "fast-glob";
 import { Address, Cell, CellMessage, CommonMessageInfo, fromNano, InternalMessage, StateInit, toNano } from "ton";
 import { TonClient, WalletContract, WalletV3R2Source, contractAddress, SendMode } from "ton";
 import { mnemonicNew, mnemonicToWalletKey } from "ton-crypto";
+import BN from "bn.js";
+import { JETTON_DEPLOY_GAS } from "./jetton-minter.deploy";
 
 async function main() {
   console.log(`=================================================================`);
@@ -34,7 +36,8 @@ async function main() {
   // initialize globals
   const client = new TonClient({ endpoint: `https://${isTestnet ? "testnet." : ""}toncenter.com/api/v2/jsonRPC` });
   const deployerWalletType = "org.ton.wallets.v3.r2"; // also see WalletV3R2Source class used below
-  const newContractFunding = toNano(0.02); // this will be (almost in full) the balance of a new deployed contract and allow it to pay rent
+  // Need set enough!!!!!
+  const newContractFunding = JETTON_DEPLOY_GAS; // this will be (almost in full) the balance of a new deployed contract and allow it to pay rent
   const workchain = 0; // normally 0, only special contracts should be deployed to masterchain (-1)
 
   // make sure we have a wallet mnemonic to deploy from (or create one if not found)
@@ -94,7 +97,11 @@ async function main() {
     const initCodeCell = Cell.fromBoc(JSON.parse(fs.readFileSync(hexArtifact).toString()).hex)[0];
 
     // make sure the contract was not already deployed
-    const newContractAddress = contractAddress({ workchain, initialData: initDataCell, initialCode: initCodeCell });
+    const newContractAddress = contractAddress({
+      workchain,
+      initialData: initDataCell,
+      initialCode: initCodeCell
+    });
     console.log(` - Based on your init code+data, your new contract address is: ${newContractAddress.toFriendly()}`);
     if (await client.isContractDeployed(newContractAddress)) {
       console.log(` - Looks like the contract is already deployed in this address, skipping deployment`);
@@ -119,6 +126,7 @@ async function main() {
         }),
       }),
     });
+    console.log("Init msg", initMessageCell);
     await client.sendExternalMessage(walletContract, transfer);
     console.log(` - Deploy transaction sent successfully`);
 
